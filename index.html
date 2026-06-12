@@ -1,69 +1,241 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ro">
 <head>
     <meta charset="UTF-8">
-    <title>Random Background Color</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping List</title>
     <style>
+        * { box-sizing: border-box; }
         body {
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            max-width: 500px;
+            margin: 2rem auto;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            transition: background-color 0.4s ease;
+            background: #f3f4f6;
+            color: #111;
+            padding: 0 1rem;
         }
-        h1 {
-            font-size: 1.8rem;
-            color: white;
-            text-shadow: 0 2px 6px rgba(0,0,0,0.25);
-            margin-bottom: 1rem;
+        h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+        .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 1rem; }
+        .input-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
         }
-        #colorBtn {
-            font-size: 1.1rem;
-            padding: 0.75rem 1.5rem;
+        input[type="text"], input[type="number"] {
+            padding: 0.6rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        input[name="item"] { flex: 1; }
+        input[name="qty"] { width: 70px; }
+        button {
+            padding: 0.6rem 0.9rem;
             border: none;
-            border-radius: 99px;
-            background: white;
-            color: #222;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
+            font-size: 1rem;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            transition: transform 0.1s ease;
         }
-        #colorBtn:hover {
-            transform: scale(1.03);
+        button:hover { background: #1e40af; }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        button.ghost { background: #e5e7eb; color: #111; }
+        button.ghost:hover { background: #d1d5db; }
+        .filters {
+            display: flex;
+            gap: 0.4rem;
+            margin: 0.75rem 0 0.5rem;
+        }
+        .filters button { background: white; color: #333; border: 1px solid #ddd; }
+        .filters button.active { background: #2563eb; color: white; border-color: #2563eb; }
+        ul { list-style: none; padding: 0; margin: 0; }
+        li {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 0.6rem 0.7rem;
+            margin-bottom: 0.4rem;
+        }
+        li.done { opacity: 0.6; }
+        li.done .item-name { text-decoration: line-through; }
+        .item-name { flex: 1; }
+        .item-meta { font-size: 0.8rem; color: #777; margin-right: 0.4rem; }
+        .actions { display: flex; gap: 0.3rem; }
+        .summary {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #444;
+        }
+        .empty {
+            text-align: center;
+            color: #888;
+            padding: 1.5rem;
         }
     </style>
 </head>
 <body>
-    <h1>🎨 Random Background Color</h1>
-    <div style="font-size:3rem;margin-bottom:1rem">😊</div>
-    <button id="colorBtn">Change Color</button>
-    <p id="hex" style="color:white;text-shadow:0 1px 4px rgba(0,0,0,0.3);margin-top:2rem"></p>
+    <h1>🛒 Lista de cumpărături</h1>
+    <p class="subtitle">Adaugă produse și marchează-le pe măsură ce le cumperi.</p>
+
+    <form id="addForm" class="input-row">
+        <input type="text" name="item" placeholder="Ex: Lapte, Pâine..." required>
+        <input type="number" name="qty" placeholder="buc" min="1" value="1">
+        <button type="submit">Adaugă</button>
+    </form>
+
+    <div class="filters">
+        <button data-filter="all" class="active">Toate</button>
+        <button data-filter="active">De cumpărat</button>
+        <button data-filter="done">Cumparate</button>
+    </div>
+
+    <ul id="list"></ul>
+    <div id="summary" class="summary"></div>
+    <div style="margin-top:1rem;display:flex;gap:0.5rem">
+        <button id="clearDone" class="danger">Șterre achizițiile</button>
+        <button id="clearAll" class="ghost">Golește lista</button>
+    </div>
 
     <script>
-        const btn = document.getElementById('colorBtn');
-        const hex = document.getElementById('hex');
+        const STORAGE_KEY = 'shopping-list-v1';
+        const form = document.getElementById('addForm');
+        const list = document.getElementById('list');
+        const summary = document.getElementById('summary');
+        const clearDone = document.getElementById('clearDone');
+        const clearAll = document.getElementById('clearAll');
+        const filterBtns = document.querySelectorAll('.filters button');
 
-        function toHex(n) {
-            return n.toString(16).padStart(2, '0');
+        let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        let filter = 'all';
+
+        function save() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+            render();
         }
 
-        function randomColor() {
-            const r = Math.floor(Math.random() * 256);
-            const g = Math.floor(Math.random() * 256);
-            const b = Math.floor(Math.random() * 256);
-            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        function addItem(name, qty) {
+            items.unshift({
+                id: Date.now(),
+                name: name.trim(),
+                qty: Math.max(1, parseInt(qty) || 1),
+                done: false,
+                created: Date.now()
+            });
+            save();
         }
 
-        function update() {
-            const color = randomColor();
-            document.body.style.backgroundColor = color;
-            hex.textContent = color;
+        function toggleItem(id) {
+            const item = items.find(x => x.id === id);
+            if (item) { item.done = !item.done; save(); }
         }
 
-        btn.addEventListener('click', update);
-        update();
+        function deleteItem(id) {
+            items = items.filter(x => x.id !== id);
+            save();
+        }
+
+        function updateName(id, newName) {
+            const item = items.find(x => x.id === id);
+            if (item) { item.name = newName.trim(); save(); }
+        }
+
+        function clearDoneItems() {
+            items = items.filter(x => !x.done);
+            save();
+        }
+
+        function clearAllItems() {
+            if (confirm('Sigur ștergi toată lista?')) {
+                items = [];
+                save();
+            }
+        }
+
+        function render() {
+            const filtered = items.filter(item => {
+                if (filter === 'active') return !item.done;
+                if (filter === 'done') return item.done;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<li class="empty">Lista este goală</li>';
+            } else {
+                list.innerHTML = filtered.map(item => `
+                    <li class="${item.done ? 'done' : ''}">
+                        <input type="checkbox" ${item.done ? 'checked' : ''} data-action="toggle" data-id="${item.id}">
+                        <span class="item-name" data-action="rename" data-id="${item.id}" title="Dublu-click pentru editare">${escapeHtml(item.name)}</span>
+                        <span class="item-meta">×${item.qty}</span>
+                        <div class="actions">
+                            <button class="danger" data-action="delete" data-id="${item.id}">✕</button>
+                        </div>
+                    </li>
+                `).join('');
+            }
+
+            const total = items.length;
+            const done = items.filter(x => x.done).length;
+            summary.textContent = total === 0
+                ? ''
+                : `${done}/${total} produse cumpărate`;
+
+            clearDone.style.display = done > 0 ? 'inline-block' : 'none';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event delegation
+        list.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const id = Number(btn.dataset.id);
+            const action = btn.dataset.action;
+            if (action === 'toggle') toggleItem(id);
+            if (action === 'delete') deleteItem(id);
+        });
+
+        list.addEventListener('dblclick', (e) => {
+            const span = e.target.closest('[data-action="rename"]');
+            if (!span) return;
+            const id = Number(span.dataset.id);
+            const item = items.find(x => x.id === id);
+            if (!item) return;
+            const newName = prompt('Editează produs:', item.name);
+            if (newName !== null && newName.trim()) updateName(id, newName);
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const data = new FormData(form);
+            const name = data.get('item');
+            const qty = data.get('qty');
+            if (!name.trim()) return;
+            addItem(name, qty);
+            form.reset();
+        });
+
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                filter = btn.dataset.filter;
+                render();
+            });
+        });
+
+        clearDone.addEventListener('click', clearDoneItems);
+        clearAll.addEventListener('click', clearAllItems);
+
+        render();
     </script>
 </body>
 </html>
