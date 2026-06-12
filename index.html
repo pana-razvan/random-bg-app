@@ -96,18 +96,28 @@
 
     <ul id="list"></ul>
     <div id="summary" class="summary"></div>
-    <div style="margin-top:1rem;display:flex;gap:0.5rem">
-        <button id="clearDone" class="danger">Șterre achizițiile</button>
+    <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+        <button id="clearDone" class="danger">Șterge achizițiile</button>
         <button id="clearAll" class="ghost">Golește lista</button>
+        <button id="snapshot" class="ghost" style="background:#fef3c7;color:#92400e">📷 Salvează snapshot</button>
     </div>
+
+    <details style="margin-top:1rem;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:0.6rem 0.8rem">
+        <summary><strong>Istoric liste</strong> <span id="historyCount" style="color:#666;font-size:0.85rem"></span></summary>
+        <div id="history" style="margin-top:0.5rem"></div>
+    </details>
 
     <script>
         const STORAGE_KEY = 'shopping-list-v1';
+        const HISTORY_KEY = 'shopping-list-history-v1';
         const form = document.getElementById('addForm');
         const list = document.getElementById('list');
         const summary = document.getElementById('summary');
         const clearDone = document.getElementById('clearDone');
         const clearAll = document.getElementById('clearAll');
+        const snapshotBtn = document.getElementById('snapshot');
+        const historyEl = document.getElementById('history');
+        const historyCount = document.getElementById('historyCount');
         const filterBtns = document.querySelectorAll('.filters button');
 
         let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -153,7 +163,71 @@
             if (confirm('Sigur ștergi toată lista?')) {
                 items = [];
                 save();
+                saveHistory([]);
+                renderHistory();
             }
+        }
+
+        function loadHistory() {
+            return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        }
+
+        function saveHistory(history) {
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        }
+
+        function addSnapshot() {
+            const history = loadHistory();
+            const now = new Date();
+            const label = now.toLocaleString('ro-RO');
+            const entry = {
+                id: now.toISOString(),
+                label,
+                items: JSON.parse(JSON.stringify(items))
+            };
+            history.unshift(entry);
+            if (history.length > 20) history.length = 20; // keep max 20
+            saveHistory(history);
+            renderHistory();
+        }
+
+        function restoreSnapshot(id) {
+            const history = loadHistory();
+            const entry = history.find(h => h.id === id);
+            if (!entry) return;
+            if (!confirm(`Restorăm lista din ${entry.label}? Lista actuală va fi înlocuită.`)) return;
+            items = JSON.parse(JSON.stringify(entry.items));
+            save();
+        }
+
+        function deleteSnapshot(id) {
+            const history = loadHistory().filter(h => h.id !== id);
+            saveHistory(history);
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const history = loadHistory();
+            historyCount.textContent = history.length ? `(${history.length})` : '';
+            if (history.length === 0) {
+                historyEl.innerHTML = '<p style="color:#888;font-size:0.9rem">Nu există snapshots salvate.</p>';
+                return;
+            }
+            historyEl.innerHTML = history.map(h => {
+                const total = h.items.length;
+                const done = h.items.filter(x => x.done).length;
+                return `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid #f3f4f6">
+                    <div>
+                        <div style="font-weight:600">${escapeHtml(h.label)}</div>
+                        <div style="font-size:0.8rem;color:#777">${done}/${total} cumpărate</div>
+                    </div>
+                    <div style="display:flex;gap:0.3rem">
+                        <button class="ghost" data-history="restore" data-id="${h.id}">Restore</button>
+                        <button class="danger" data-history="delete" data-id="${h.id}">✕</button>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         function render() {
@@ -234,7 +308,17 @@
 
         clearDone.addEventListener('click', clearDoneItems);
         clearAll.addEventListener('click', clearAllItems);
+        snapshotBtn.addEventListener('click', addSnapshot);
 
+        historyEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-history]');
+            if (!btn) return;
+            const id = btn.dataset.history === 'delete' ? btn.dataset.id : btn.dataset.id;
+            if (btn.dataset.history === 'restore') restoreSnapshot(id);
+            if (btn.dataset.history === 'delete') deleteSnapshot(id);
+        });
+
+        renderHistory();
         render();
     </script>
 </body>
